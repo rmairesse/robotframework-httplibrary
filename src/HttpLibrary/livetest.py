@@ -35,19 +35,15 @@ Test stuff in the response:
 
 """
 
-__author__ = 'storborg@mit.edu'
-__version__ = '0.5'
-
 import sys
 import webtest
-import httplib
-import urlparse
-import ssl
-from Cookie import BaseCookie, CookieError
+import http.client
+from urllib.parse import urlparse
+from http.cookies import BaseCookie, CookieError
 from six.moves import http_cookiejar
 
-conn_classes = {'http': httplib.HTTPConnection,
-                'https': httplib.HTTPSConnection}
+conn_classes = {'http': http.client.HTTPConnection,
+                'https': http.client.HTTPSConnection}
 
 
 class RequestCookieAdapter(object):
@@ -59,6 +55,7 @@ class RequestCookieAdapter(object):
     """
     def __init__(self, request):
         self._request = request
+        self.origin_req_host = request.host
 
     def is_unverifiable(self):
         return True  # sure? Why not?
@@ -71,8 +68,10 @@ class RequestCookieAdapter(object):
     def get_full_url(self):
         return self._request.url
 
-    def get_origin_req_host(self):
-        return self._request.host
+    def get_host(self):
+        return self.origin_req_host
+        
+    get_origin_req_host = get_host
 
     def add_unredirected_header(self, key, header):
         self._request.headers[key] = header
@@ -97,12 +96,12 @@ class ResponseCookieAdapter(object):
     def get_all(self, headers, default):  # NOQA
         # This is undocumented method that Python 3 cookielib uses
         return self._response.headers.getall(headers)
-
+        
 
 class TestApp(webtest.TestApp):
     def _load_conn(self, scheme):
         if scheme in conn_classes:
-            self.conn[scheme] = conn_classes[scheme](self.host, context=ssl._create_unverified_context())
+            self.conn[scheme] = conn_classes[scheme](self.host)
         else:
             raise ValueError("Scheme '%s' is not supported." % scheme)
 
@@ -119,10 +118,9 @@ class TestApp(webtest.TestApp):
 
     def _do_httplib_request(self, req):
         "Convert WebOb Request to httplib request."
-        headers = dict((name, val) for name, val in req.headers.iteritems())
+        headers = dict((name, val) for name, val in list(req.headers.items()))
         if req.scheme not in self.conn:
             self._load_conn(req.scheme)
-
         conn = self.conn[req.scheme]
         conn.request(req.method, req.path_qs, req.body, headers)
 
@@ -130,11 +128,7 @@ class TestApp(webtest.TestApp):
         res = webtest.TestResponse()
         res.status = '%s %s' % (webresp.status, webresp.reason)
         res.body = webresp.read()
-        response_headers = []
-        for headername in dict(webresp.getheaders()).keys():
-            for headervalue in webresp.msg.getheaders(headername):
-                response_headers.append((headername, headervalue))
-        res.headerlist = response_headers
+        res.headerlist = [list((x, y)) for x, y in list(dict(webresp.getheaders()).items())]
         res.errors = ''
         return res
 
@@ -146,11 +140,10 @@ class TestApp(webtest.TestApp):
         headers = {}
         if self.cookies:
             c = BaseCookie()
-            for name, value in self.cookies.items():
+            for name, value in list(self.cookies.items()):
                 c[name] = value
-            hc = '; '.join(['='.join([m.key, m.value]) for m in c.values()])
+            hc = '; '.join(['='.join([m.key, m.value]) for m in list(c.values())])
             req.headers['Cookie'] = hc
-
         res = self._do_httplib_request(req)
         # Set these attributes for consistency with webtest.
         res.request = req
@@ -164,7 +157,6 @@ class TestApp(webtest.TestApp):
         # merge cookies back in
         self.cookiejar.extract_cookies(ResponseCookieAdapter(res),
                                        RequestCookieAdapter(req))
-
         return res
 
 

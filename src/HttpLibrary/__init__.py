@@ -2,9 +2,9 @@ from robot.api import logger
 
 from base64 import b64encode
 from functools import wraps
-from urlparse import urlparse
+from urllib.parse import urlparse
 
-import livetest
+from HttpLibrary import livetest
 import json
 import jsonpointer
 import jsonpatch
@@ -13,7 +13,7 @@ import jsonpatch
 def load_json(json_string):
     try:
         return json.loads(json_string)
-    except ValueError, e:
+    except ValueError as e:
         raise ValueError("Could not parse '%s' as JSON: %s" % (json_string, e))
 
 
@@ -64,9 +64,9 @@ class HTTP:
             self.post_process_request(None)
 
         def pre_process_request(self):
-            if len(self.request_headers.items()) > 0:
+            if len(list(self.request_headers.items())) > 0:
                 logger.debug("Request headers:")
-                for name, value in self.request_headers.items():
+                for name, value in list(self.request_headers.items()):
                     logger.debug("%s: %s" % (name, value))
             else:
                 logger.debug("No request headers set")
@@ -79,12 +79,12 @@ class HTTP:
 
         def post_process_request(self, response):
             self.response = response
-
+            
             if response != None:
                 self._http.log_response_status('DEBUG')
                 self._http.log_response_headers('DEBUG')
                 self._http.log_response_body('DEBUG')
-
+                                
             next_request_should = self.next_request_should
 
             # prepare next request context, even if one of the following assertions
@@ -436,7 +436,7 @@ class HTTP:
         Specify `log_level` (default: "INFO") to set the log level.
         """
         logger.write("Response headers:", log_level)
-        for name, value in self.response.headers.items():
+        for name, value in list(self.response.headers.items()):
             logger.write("%s: %s" % (name, value), log_level)
 
     # request headers
@@ -465,7 +465,7 @@ class HTTP:
         credentials = "%s:%s" % (username, password)
         logger.info('Set basic auth to "%s"' % credentials)
         self.set_request_header(
-            "Authorization", "Basic %s" % b64encode(credentials))
+           "Authorization", "Basic %s" % b64encode(credentials.encode()).decode())
 
     # payload
 
@@ -567,7 +567,7 @@ class HTTP:
 
         try:
             return json.dumps(data, ensure_ascii=False)
-        except ValueError, e:
+        except ValueError as e:
             raise ValueError(
                 "Could not stringify '%r' to JSON: %s" % (data, e))
 
